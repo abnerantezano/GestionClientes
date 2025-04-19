@@ -1,23 +1,17 @@
-﻿using System.Text;
+﻿using System;
+using System.Collections.Generic;
+using System.Data;
 using System.Windows;
-using System.Windows.Controls;
-using System.Windows.Data;
-using System.Windows.Documents;
-using System.Windows.Input;
-using System.Windows.Media;
-using System.Windows.Media.Imaging;
-using System.Windows.Navigation;
-using System.Windows.Shapes;
 using Microsoft.Data.SqlClient;
 
 namespace GestionClientes
 {
-    /// <summary>
-    /// Interaction logic for MainWindow.xaml
-    /// </summary>
     public partial class MainWindow : Window
     {
-        private readonly string connectionString = "Server=DESKTOP-J9ERERR\\SQLEXPRESS;Database=Neptuno;User Id=user01;Password=12345;TrustServerCertificate=True;";
+        private readonly string connectionString = "Server=DESKTOP-J9ERERR\\SQLEXPRESS;Database=Neptuno;User Id=user01;Password=123456;TrustServerCertificate=True;";
+        private int paginaActual = 1;
+        private const int tamanioPagina = 20;
+
         public MainWindow()
         {
             InitializeComponent();
@@ -26,70 +20,121 @@ namespace GestionClientes
 
         private void CargarClientes()
         {
-            List<Cliente> clientes = new();
+            List<Cliente> clientes = new List<Cliente>();
 
-            using SqlConnection connection = new(connectionString);
-            connection.Open();
-
-            SqlCommand command = new("SELECT * FROM clientes WHERE Activo = 1", connection);
-            using SqlDataReader reader = command.ExecuteReader();
-
-            while (reader.Read())
+            using (SqlConnection connection = new SqlConnection(connectionString))
+            using (SqlCommand command = new SqlCommand("sp_ListarClientes", connection))
             {
-                clientes.Add(new Cliente
+                command.CommandType = CommandType.StoredProcedure;
+                command.Parameters.AddWithValue("@Pagina", paginaActual);
+                command.Parameters.AddWithValue("@TamanoPagina", tamanioPagina);
+
+                connection.Open();
+                using (SqlDataReader reader = command.ExecuteReader())
                 {
-                    IdCliente = reader["idCliente"].ToString(),
-                    NombreCompañia = reader["NombreCompañia"].ToString(),
-                    NombreContacto = reader["NombreContacto"].ToString(),
-                    CargoContacto = reader["CargoContacto"].ToString(),
-                    Direccion = reader["Direccion"].ToString(),
-                    Ciudad = reader["Ciudad"].ToString(),
-                    Region = reader["Region"].ToString(),
-                    CodPostal = reader["CodPostal"].ToString(),
-                    Pais = reader["Pais"].ToString(),
-                    Telefono = reader["Telefono"].ToString(),
-                    Fax = reader["Fax"].ToString(),
-                    Activo = true
-                });
+                    while (reader.Read())
+                    {
+                        clientes.Add(new Cliente
+                        {
+                            IdCliente = reader["IdCliente"].ToString(),
+                            NombreCompañia = reader["NombreCompañia"].ToString(),
+                            NombreContacto = reader["NombreContacto"].ToString(),
+                            CargoContacto = reader["CargoContacto"].ToString(),
+                            Direccion = reader["Direccion"].ToString(),
+                            Ciudad = reader["Ciudad"].ToString(),
+                            Region = reader["Region"].ToString(),
+                            CodPostal = reader["CodPostal"].ToString(),
+                            Pais = reader["Pais"].ToString(),
+                            Telefono = reader["Telefono"].ToString(),
+                            Fax = reader["Fax"].ToString(),
+                            Activo = Convert.ToBoolean(reader["Activo"])
+                        });
+                    }
+                }
             }
 
-            ClientesDataGrid.ItemsSource = clientes;
+            dgClientes.ItemsSource = clientes;
+            txtPagina.Text = $"Página {paginaActual}";
         }
 
-        private void InsertarCliente_Click(object sender, RoutedEventArgs e)
+        private void BtnAnterior_Click(object sender, RoutedEventArgs e)
         {
+            if (paginaActual > 1)
+            {
+                paginaActual--;
+                CargarClientes();
+            }
+        }
+
+        private void BtnSiguiente_Click(object sender, RoutedEventArgs e)
+        {
+            paginaActual++;
+            CargarClientes();
+        }
+
+        private void BtnAgregar_Click(object sender, RoutedEventArgs e)
+        {
+            ClienteForm form = new ClienteForm(FormMode.Add);
+            if (form.ShowDialog() == true)
+                CargarClientes();
+        }
+
+        private void BtnEditar_Click(object sender, RoutedEventArgs e)
+        {
+            if (dgClientes.SelectedItem is Cliente clienteSeleccionado)
+            {
+                ClienteForm form = new ClienteForm(FormMode.Edit, clienteSeleccionado);
+                if (form.ShowDialog() == true)
+                    CargarClientes();
+            }
+            else
+            {
+                MessageBox.Show("Seleccione un cliente para editar.", "Atención", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+        }
+
+        private void BtnEliminar_Click(object sender, RoutedEventArgs e)
+        {
+            string idCliente = txtIdEliminar.Text.Trim();
+
+            if (string.IsNullOrWhiteSpace(idCliente))
+            {
+                MessageBox.Show("Por favor, ingrese un ID de cliente válido para eliminar.", "Atención", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            var resultado = MessageBox.Show($"¿Está seguro que desea eliminar al cliente con ID '{idCliente}'?", "Confirmación", MessageBoxButton.YesNo, MessageBoxImage.Question);
+            if (resultado != MessageBoxResult.Yes)
+                return;
+
             try
             {
-                using SqlConnection connection = new SqlConnection(connectionString);
-                connection.Open();
-
-                SqlCommand command = new SqlCommand("sp_InsertarCliente", connection)
+                using (SqlConnection connection = new SqlConnection(connectionString))
+                using (SqlCommand command = new SqlCommand("sp_EliminarCliente", connection))
                 {
-                    CommandType = System.Data.CommandType.StoredProcedure
-                };
+                    command.CommandType = CommandType.StoredProcedure;
+                    command.Parameters.AddWithValue("@IdCliente", idCliente);
 
-                command.Parameters.AddWithValue("@IdCliente", "C002");
-                command.Parameters.AddWithValue("@NombreCompañia", "Nueva Compañía SAC");
-                command.Parameters.AddWithValue("@NombreContacto", "Carlos Paredes");
-                command.Parameters.AddWithValue("@CargoContacto", "Supervisor");
-                command.Parameters.AddWithValue("@Direccion", "Av. Perú 123");
-                command.Parameters.AddWithValue("@Ciudad", "Lima");
-                command.Parameters.AddWithValue("@Region", "Lima");
-                command.Parameters.AddWithValue("@CodPostal", "15001");
-                command.Parameters.AddWithValue("@Pais", "Perú");
-                command.Parameters.AddWithValue("@Telefono", "987654321");
-                command.Parameters.AddWithValue("@Fax", DBNull.Value);
-                command.Parameters.AddWithValue("@Activo", 1);
+                    connection.Open();
+                    int filasAfectadas = command.ExecuteNonQuery();
 
-                command.ExecuteNonQuery();
-
-                MessageBox.Show("Cliente insertado.");
-                CargarClientes();
+                    if (filasAfectadas > 0)
+                    {
+                        MessageBox.Show("Cliente eliminado correctamente.", "Éxito", MessageBoxButton.OK, MessageBoxImage.Information);
+                        txtIdEliminar.Clear();
+                        CargarClientes();
+                    }
+                    else
+                    {
+                        MessageBox.Show("No se encontró un cliente con ese ID.", "Atención", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    }
+                }
             }
             catch (Exception ex)
             {
-                MessageBox.Show("Error al insertar: " + ex.Message);
+                MessageBox.Show($"Error al eliminar cliente: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
+
     }
 }
